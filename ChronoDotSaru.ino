@@ -81,6 +81,27 @@ int8_t ChronoDotSaru::GetTempC (bool updateCache) {
 }
 
 //=============================================================================
+uint8_t ChronoDotSaru::Hours () {
+
+    // 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+    // 0 | M | P | H |     hour      |
+    //       __
+    // M: 12/24 hour mode
+    //    __
+    // P: AM/PM  OR  20 hour (BCD)
+    // H: 10 hour (BCD)
+
+    uint8_t reg  = registerCache[REGISTER_HOURS];
+    uint8_t hours = ((reg >> 4) & 0x01) * 10 + (reg & 0x0F);
+
+    if (!(reg & 0x40)) // 24 hour mode?
+        hours += ((reg >> 5) & 0x01) * 20;
+
+    return hours;
+
+}
+
+//=============================================================================
 void ChronoDotSaru::Init () {
     
     // clear /EOSC bit
@@ -96,6 +117,28 @@ void ChronoDotSaru::Init () {
             CONTROL_REGISTER_FLAG_RATE_SELECT_2
         )
     );
+
+}
+
+//=============================================================================
+uint8_t ChronoDotSaru::Minutes () {
+
+    uint8_t minutes = registerCache[REGISTER_MINUTES];
+    // convert BCD to decimal
+    // 7 | 6 | 5 | 4  | 3 | 2 | 1 | 0 |
+    // 0 | 10 minutes |    minutes    |
+    return (((minutes & 0xF0)>>4)*10 + (minutes & 0x0F));
+
+}
+
+//=============================================================================
+uint8_t ChronoDotSaru::Seconds () {
+
+    uint8_t seconds = registerCache[REGISTER_SECONDS];
+    // convert BCD to decimal
+    // 7 | 6 | 5 | 4  | 3 | 2 | 1 | 0 |
+    // 0 | 10 seconds |    seconds    |
+    return (((seconds & 0xF0)>>4)*10 + (seconds & 0x0F));
 
 }
 

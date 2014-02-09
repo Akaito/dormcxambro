@@ -104,6 +104,11 @@ struct ChronoDotSaru {
         bool updateCache
     );
 
+    // Time
+    uint8_t Seconds ();
+    uint8_t Minutes ();
+    uint8_t Hours ();
+
     // Simple alarm functionality
     void AlarmEnable (EAlarm alarm);
     void AlarmDisable (EAlarm alarm);
