@@ -95,7 +95,7 @@ struct ChronoDotSaru {
     bool UpdateCache (ERegister reg, unsigned bytes);
     bool UpdateCacheRange (ERegister reg, ERegister endInclusive);
 
-    void SetRegister (ERegister reg, uint8_t flags);
+    void SetRegister (ERegister reg, uint8_t value);
     void SetRegisterFlagsTo (ERegister reg, uint8_t flags, bool value);
     void GetRegister (
         ERegister reg,
@@ -105,9 +105,12 @@ struct ChronoDotSaru {
     );
 
     // Time
-    uint8_t Seconds ();
-    uint8_t Minutes ();
     uint8_t Hours ();
+    uint8_t Minutes ();
+    uint8_t Seconds ();
+    void SetHours (uint8_t hours, bool twelveHourMode);
+    void SetMinutes (uint8_t minutes);
+    void SetSeconds (uint8_t seconds);
 
     // Simple alarm functionality
     void AlarmEnable (EAlarm alarm);

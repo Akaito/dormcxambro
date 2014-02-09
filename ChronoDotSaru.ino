@@ -1,6 +1,24 @@
 #include "ChronoDotSaru.h"
 #include <Wire.h>
 
+//=============================================================================
+// Local helpers
+//=============================================================================
+
+//=============================================================================
+uint8_t BcdFromDecimal (uint8_t decimal) {
+    return ((decimal / 10) << 4) + (decimal % 10);
+}
+
+//=============================================================================
+uint8_t DecimalFromBcd (uint8_t bcd) {
+    return (bcd >> 4) * 10 + (bcd & 0x0F);
+}
+
+
+//=============================================================================
+// ChronoDotSaru
+//=============================================================================
 
 //=============================================================================
 void ChronoDotSaru::AlarmDisable (EAlarm alarm) {
@@ -91,13 +109,12 @@ uint8_t ChronoDotSaru::Hours () {
     // P: AM/PM  OR  20 hour (BCD)
     // H: 10 hour (BCD)
 
-    uint8_t reg  = registerCache[REGISTER_HOURS];
-    uint8_t hours = ((reg >> 4) & 0x01) * 10 + (reg & 0x0F);
+    uint8_t reg = registerCache[REGISTER_HOURS];
 
-    if (!(reg & 0x40)) // 24 hour mode?
-        hours += ((reg >> 5) & 0x01) * 20;
+    if (reg & 0x40) // 12 hour mode?
+        return DecimalFromBcd(reg & 0x1F);
 
-    return hours;
+    return DecimalFromBcd(reg & 0x3F);
 
 }
 
@@ -123,33 +140,45 @@ void ChronoDotSaru::Init () {
 //=============================================================================
 uint8_t ChronoDotSaru::Minutes () {
 
-    uint8_t minutes = registerCache[REGISTER_MINUTES];
-    // convert BCD to decimal
     // 7 | 6 | 5 | 4  | 3 | 2 | 1 | 0 |
     // 0 | 10 minutes |    minutes    |
-    return (((minutes & 0xF0)>>4)*10 + (minutes & 0x0F));
+    return DecimalFromBcd(registerCache[REGISTER_MINUTES]);
 
 }
 
 //=============================================================================
 uint8_t ChronoDotSaru::Seconds () {
 
-    uint8_t seconds = registerCache[REGISTER_SECONDS];
-    // convert BCD to decimal
     // 7 | 6 | 5 | 4  | 3 | 2 | 1 | 0 |
     // 0 | 10 seconds |    seconds    |
-    return (((seconds & 0xF0)>>4)*10 + (seconds & 0x0F));
+    return DecimalFromBcd(registerCache[REGISTER_SECONDS]);
 
 }
 
 //=============================================================================
-void ChronoDotSaru::SetRegister (ERegister reg, uint8_t flags) {
+void ChronoDotSaru::SetHours (uint8_t hours, bool twelveHourMode) {
+
+    uint8_t val = BcdFromDecimal(hours);
+    if (twelveHourMode)
+        val |= 0x40;
+
+    SetRegister(REGISTER_HOURS, hours);
+
+}
+
+//=============================================================================
+void ChronoDotSaru::SetMinutes (uint8_t minutes) {
+    SetRegister(REGISTER_MINUTES, BcdFromDecimal(minutes));
+}
+
+//=============================================================================
+void ChronoDotSaru::SetRegister (ERegister reg, uint8_t value) {
 
     Wire.beginTransmission(I2C_ADDRESS);
     Wire.write(reg); // select register
-    Wire.write(flags);            // write bitmask
+    Wire.write(value);            // write bitmask
     if (Wire.endTransmission() == 0)
-        registerCache[reg] = flags;
+        registerCache[reg] = value;
 
 }
 
@@ -164,6 +193,11 @@ void ChronoDotSaru::SetRegisterFlagsTo (ERegister reg, uint8_t flags, bool value
 
     SetRegister(reg, desired);
 
+}
+
+//=============================================================================
+void ChronoDotSaru::SetSeconds (uint8_t seconds) {
+    SetRegister(REGISTER_SECONDS, BcdFromDecimal(seconds));
 }
 
 //=============================================================================
