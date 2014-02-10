@@ -1,5 +1,32 @@
 #pragma once
 
+static const char DAY_OF_WEEK_NAMES[][10] = {
+    "INVALID",
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+};
+
+static const char MONTH_NAMES[][10] = {
+    "INVALID",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+};
+
 // macetech ChronoDot v2.0 datasheet: http://datasheets.maximintegrated.com/en/ds/DS3231.pdf
 struct ChronoDotSaru {
 
@@ -20,7 +47,6 @@ struct ChronoDotSaru {
         REGISTER_ALARM_1_MINUTES,
         REGISTER_ALARM_1_HOURS,
         REGISTER_ALARM_1_DAY_OF_WEEK_OR_MONTH,
-        REGISTER_ALARM_2_SECONDS,
         REGISTER_ALARM_2_MINUTES,
         REGISTER_ALARM_2_HOURS,
         REGISTER_ALARM_2_DAY_OF_WEEK_OR_MONTH,
@@ -31,7 +57,7 @@ struct ChronoDotSaru {
         REGISTER_TEMP_LSB,                      // Bits 6 and 7 hold fractional temp in 0.25 increments
         REGISTERS
     };
-    static const uint8_t ALARM_REGISTER_COUNT = REGISTER_ALARM_2_SECONDS - REGISTER_ALARM_1_SECONDS;
+    //static const uint8_t ALARM_REGISTER_COUNT = REGISTER_ALARM_2_SECONDS - REGISTER_ALARM_1_SECONDS;
 
     enum EControlRegisterFlags {
         // If an alarm bit and _INTERRUPT_CONTROL are set, permits the
@@ -76,9 +102,20 @@ struct ChronoDotSaru {
         STATUS_REGISTER_FLAG_OSCILLATOR_STOPPED  = (1 << 7), // Power-on state: 1
     };
 
-    enum EAlarm {
-        ALARM_1 = 0,
-        ALARM_2,
+    enum EClock {
+        CLOCK_ALARM_1 = 0,
+        CLOCK_ALARM_2,
+        CLOCK_TIME,
+    };
+
+    enum EDayOfWeek {
+        DAY_OF_WEEK_SUNDAY = 1,
+        DAY_OF_WEEK_MONDAY,
+        DAY_OF_WEEK_TUESDAY,
+        DAY_OF_WEEK_WEDNESDAY,
+        DAY_OF_WEEK_THURSDAY,
+        DAY_OF_WEEK_FRIDAY,
+        DAY_OF_WEEK_SATURDAY,
     };
 
 //=============================================================================
@@ -104,21 +141,45 @@ struct ChronoDotSaru {
         bool updateCache
     );
 
+    // Helpers
+    ERegister HourRegisterFromClock (EClock clock);
+    ERegister MinuteRegisterFromClock (EClock clock);
+    ERegister SecondRegisterFromClock (EClock clock);
+    uint8_t DecimalHourFromRegister (ERegister reg); // 12-hour mode? [1,12] : [0,23]
+    void    WriteHourRegisterFromDecimal (ERegister reg, uint8_t hours);               // [0,23]
+    void    WriteHourRegisterFromDecimal (ERegister reg, uint8_t hours, bool pmNotAm); // [1,12]
+
     // Time
-    uint8_t Hours ();
-    uint8_t Minutes ();
-    uint8_t Seconds ();
-    void SetHours (uint8_t hours, bool twelveHourMode);
-    void SetMinutes (uint8_t minutes);
-    void SetSeconds (uint8_t seconds);
+    uint8_t Hour (EClock clock = CLOCK_TIME);
+    uint8_t Minute (EClock clock = CLOCK_TIME);
+    uint8_t Second (EClock clock = CLOCK_TIME);
+    bool    PmNotAm (EClock clock = CLOCK_TIME);
+    bool    TwelveHourMode (EClock clock = CLOCK_TIME) { return registerCache[HourRegisterFromClock(clock)] & 0x40; }
+    void    SetHour24 (uint8_t hours, EClock clock = CLOCK_TIME);               // [0,23]
+    void    SetHour12 (uint8_t hours, bool pmNotAm, EClock clock = CLOCK_TIME); // [1,12]
+    void    SetMinute (uint8_t minutes, EClock clock = CLOCK_TIME);             // [0-59]
+    void    SetSecond (uint8_t seconds, EClock clock = CLOCK_TIME);             // [0-59]
+    void    SetTwelveHourMode (bool twelveHourMode, EClock clock = CLOCK_TIME);
+
+    // Date
+    int          Year ();                       // [1900,2099]
+    uint8_t      Month ();                      // [1,12]
+    uint8_t      DayOfMonth ();                 // [1,31] (ChronoDot handles leap years)
+    EDayOfWeek   DayOfWeek ();                  // [1,7]
+    const char * MonthName ()     { return MONTH_NAMES[Month()]; }
+    const char * DayOfWeekName () { return DAY_OF_WEEK_NAMES[DayOfWeek()]; }
+    void         SetYear (int year);            // [2000,2199]
+    void         SetMonth (uint8_t month);      // [1,12]
+    void         SetDayOfMonth (uint8_t day);   // [1,31]
+    void         SetDayOfWeek (EDayOfWeek day); // [Sunday,Saturday]
 
     // Simple alarm functionality
-    void AlarmEnable (EAlarm alarm);
-    void AlarmDisable (EAlarm alarm);
-    void AlarmToggle (EAlarm alarm);
-    bool AlarmEnabledStatus (EAlarm alarm, bool updateCache);
-    bool AlarmFlagStatus (EAlarm alarm, bool updateCache);
-    void AlarmClearStatusFlag (EAlarm alarm);
+    void AlarmEnable (EClock alarm);
+    void AlarmDisable (EClock alarm);
+    void AlarmToggle (EClock alarm);
+    bool AlarmEnabledStatus (EClock alarm, bool updateCache);
+    bool AlarmFlagStatus (EClock alarm, bool updateCache);
+    void AlarmClearStatusFlag (EClock alarm);
 
     int8_t GetTempC (bool updateCache);
 
