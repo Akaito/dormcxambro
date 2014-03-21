@@ -43,12 +43,17 @@ void setup () {
     //s_chronoDot.SetSecond(00);
     //*/
 
-    s_chronoDot.SetHour12(7, false, ChronoDotSaru::CLOCK_ALARM_1);
-    s_chronoDot.SetMinute(5, ChronoDotSaru::CLOCK_ALARM_1);
+    // Sunrise
+    s_chronoDot.SetHour24(7, ChronoDotSaru::CLOCK_ALARM_1);
+    s_chronoDot.SetMinute(30, ChronoDotSaru::CLOCK_ALARM_1);
     s_chronoDot.SetSecond(0, ChronoDotSaru::CLOCK_ALARM_1);
     //s_chronoDot.SetHour12(10, true, ChronoDotSaru::CLOCK_ALARM_1);
-    //s_chronoDot.SetMinute(38, ChronoDotSaru::CLOCK_ALARM_1);
     s_chronoDot.AlarmEnable(ChronoDotSaru::CLOCK_ALARM_1);
+
+    // Sunset
+    s_chronoDot.SetHour24(19, ChronoDotSaru::CLOCK_ALARM_2);
+    s_chronoDot.SetMinute(15, ChronoDotSaru::CLOCK_ALARM_2);
+    s_chronoDot.AlarmEnable(ChronoDotSaru::CLOCK_ALARM_2);
 
     secondLastTempUpdate = 0;
     secondsSinceTempUpdate = 0;
@@ -66,8 +71,10 @@ void loop () {
         int  minutes        = s_chronoDot.Minute();
         int  seconds        = s_chronoDot.Second();
 
+        /*
         Serial.print("  "); Serial.print(s_chronoDot.DayOfWeekName()); Serial.print(", "); Serial.print(s_chronoDot.MonthName());
             Serial.print(" "); Serial.print(s_chronoDot.DayOfMonth()); Serial.print(", "); Serial.println(s_chronoDot.Year());
+        */
         Serial.print(hours); Serial.print(":"); Serial.print(minutes); Serial.print(":");
         if (twelveHourMode) {
             Serial.print(seconds); Serial.println(pmNotAm ? " PM" : " AM");
@@ -92,7 +99,11 @@ void loop () {
         //*/
 
         if (s_chronoDot.AlarmFlagStatus(ChronoDotSaru::CLOCK_ALARM_1, true)) {
-            Serial.println("Alarm!!");
+            Serial.println("Alarm_1 !!");
+            mode = 1;
+        }
+        else if (s_chronoDot.AlarmFlagStatus(ChronoDotSaru::CLOCK_ALARM_2, true)) {
+            Serial.println("Alarm_2 !!");
             mode = 1;
         }
  

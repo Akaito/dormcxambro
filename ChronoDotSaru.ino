@@ -40,16 +40,29 @@ void ChronoDotSaru::AlarmDisable (EClock alarm) {
 
 //=============================================================================
 void ChronoDotSaru::AlarmEnable (EClock alarm) {
+
+    if (alarm == CLOCK_TIME)
+        return;
+
     SetRegisterFlagsTo(
         REGISTER_CONTROL,
         CONTROL_REGISTER_FLAG_ALARM_1_ENABLE << alarm,
         true
     );
+
     // TODO : Don't just assume hour-minute matching mode.
-    SetRegisterFlagsTo(REGISTER_ALARM_1_SECONDS, 0x80, false);             // A1M1
-    SetRegisterFlagsTo(REGISTER_ALARM_1_MINUTES, 0x80, false);             // A1M2
-    SetRegisterFlagsTo(REGISTER_ALARM_1_HOURS, 0x80, false);               // A1M3
-    SetRegisterFlagsTo(REGISTER_ALARM_1_DAY_OF_WEEK_OR_MONTH, 0x80, true); // A1M4
+    if (alarm == CLOCK_ALARM_1) {
+        SetRegisterFlagsTo(REGISTER_ALARM_1_SECONDS, 0x80, false);             // A1M1
+        SetRegisterFlagsTo(REGISTER_ALARM_1_MINUTES, 0x80, false);             // A1M2
+        SetRegisterFlagsTo(REGISTER_ALARM_1_HOURS, 0x80, false);               // A1M3
+        SetRegisterFlagsTo(REGISTER_ALARM_1_DAY_OF_WEEK_OR_MONTH, 0x80, true); // A1M4
+    }
+    else {
+        SetRegisterFlagsTo(REGISTER_ALARM_2_MINUTES, 0x80, false);             // A1M2
+        SetRegisterFlagsTo(REGISTER_ALARM_2_HOURS, 0x80, false);               // A1M3
+        SetRegisterFlagsTo(REGISTER_ALARM_2_DAY_OF_WEEK_OR_MONTH, 0x80, true); // A1M4
+    }
+
 }
 
 //=============================================================================
@@ -275,7 +288,7 @@ void ChronoDotSaru::SetHour24 (uint8_t hours, EClock clock) {
 
     ERegister reg = HourRegisterFromClock(clock);
     uint8_t bcd = BcdFromDecimal(hours);
-    Serial.print("SetHour24: BcdFromDecimal result: "); Serial.print(hours); Serial.print(" => "); Serial.println(bcd);
+    //Serial.print("SetHour24: BcdFromDecimal result: "); Serial.print(hours); Serial.print(" => "); Serial.println(bcd);
     SetRegister(reg, BcdFromDecimal(hours) | (registerCache[reg] & 0x80));
 
 }
