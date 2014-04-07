@@ -13,12 +13,22 @@
 //   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(60*4, PIN, NEO_GRB + NEO_KHZ800);
+//Adafruit_NeoPixel strip = Adafruit_NeoPixel(60*4*4, PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(222, PIN, NEO_GRB + NEO_KHZ800);
+
+// Note: We have 4 4m lengths, with 60 LEDs per meter (240 per 4m length, 960 total)
+
+enum EMode {
+    MODE_WAIT_FOR_ALARM = 0,
+    MODE_ALARM,
+    MODE_LED_MEASURE,
+    MODES
+};
 
 ChronoDotSaru s_chronoDot;
 unsigned secondLastTempUpdate;
 unsigned secondsSinceTempUpdate;
-int      mode = 0;
+EMode    mode;
  
 void setup () {
 
@@ -43,9 +53,13 @@ void setup () {
     //s_chronoDot.SetSecond(00);
     //*/
 
+    srandom((unsigned long)(s_chronoDot.Second()) << 8 | (unsigned long)(s_chronoDot.Second()));
+    mode = (random() % 2) ? MODE_WAIT_FOR_ALARM : MODE_ALARM;
+    //mode = MODE_LED_MEASURE;
+
     // Sunrise
     s_chronoDot.SetHour24(7, ChronoDotSaru::CLOCK_ALARM_1);
-    s_chronoDot.SetMinute(30, ChronoDotSaru::CLOCK_ALARM_1);
+    s_chronoDot.SetMinute(20, ChronoDotSaru::CLOCK_ALARM_1);
     s_chronoDot.SetSecond(0, ChronoDotSaru::CLOCK_ALARM_1);
     //s_chronoDot.SetHour12(10, true, ChronoDotSaru::CLOCK_ALARM_1);
     s_chronoDot.AlarmEnable(ChronoDotSaru::CLOCK_ALARM_1);
@@ -62,7 +76,7 @@ void setup () {
  
 void loop () {
 
-    if (!mode) {
+    if (mode == MODE_WAIT_FOR_ALARM) {
         s_chronoDot.UpdateCacheRange(ChronoDotSaru::REGISTER_SECONDS, ChronoDotSaru::REGISTER_YEAR);
 
         bool pmNotAm        = s_chronoDot.PmNotAm();
@@ -100,16 +114,18 @@ void loop () {
 
         if (s_chronoDot.AlarmFlagStatus(ChronoDotSaru::CLOCK_ALARM_1, true)) {
             Serial.println("Alarm_1 !!");
-            mode = 1;
+            mode = MODE_ALARM;
         }
         else if (s_chronoDot.AlarmFlagStatus(ChronoDotSaru::CLOCK_ALARM_2, true)) {
             Serial.println("Alarm_2 !!");
-            mode = 1;
+            mode = MODE_ALARM;
         }
  
         delay(1000);
     }
-    else {
+    else if (mode == MODE_ALARM) {
+        Serial.println("Alarm mode");
+
         // Some example procedures showing how to display to the pixels:
         colorWipe(strip.Color(255, 0, 0), 50); // Red
         colorWipe(strip.Color(0, 255, 0), 50); // Green
@@ -122,6 +138,9 @@ void loop () {
         rainbow(20);
         rainbowCycle(20);
         theaterChaseRainbow(50);
+    }
+    else {
+        LedCounter(2000);
     }
 }
 
@@ -207,4 +226,33 @@ uint32_t Wheel(byte WheelPos) {
    WheelPos -= 170;
    return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
   }
+}
+
+// LED count measuring pattern
+void LedCounter (uint8_t wait) {
+
+    Serial.println("LED counting mode.");
+
+    static uint32_t colorTable[] = {
+        strip.Color(0xFF, 0x00, 0x00),
+        strip.Color(0x00, 0xFF, 0x00),
+        strip.Color(0x00, 0x00, 0xFF),
+        strip.Color(0x7F, 0x7F, 0x00),
+        strip.Color(0x7F, 0x00, 0x7F),
+        strip.Color(0x00, 0x7F, 0x7F),
+        strip.Color(0xFF, 0x7F, 0x7F),
+        strip.Color(0x7F, 0xFF, 0x7F),
+        strip.Color(0x7F, 0x7F, 0xFF),
+        strip.Color(0x55, 0x55, 0x55),
+    };
+    static uint16_t colorTableCount = sizeof(colorTable)/sizeof(colorTable[0]);
+
+    const uint16_t pixelCount = strip.numPixels();
+    for (uint16_t i = 0; i < pixelCount; ++i) {
+        strip.setPixelColor(i, colorTable[(i/10) % colorTableCount]);
+    }
+
+    strip.show();
+    delay(wait);
+
 }
