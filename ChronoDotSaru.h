@@ -1,3 +1,4 @@
+// macetech ChronoDot v2.0 datasheet: http://datasheets.maximintegrated.com/en/ds/DS3231.pdf
 #pragma once
 
 static const char DAY_OF_WEEK_NAMES[][10] = {
@@ -27,7 +28,6 @@ static const char MONTH_NAMES[][10] = {
     "December",
 };
 
-// macetech ChronoDot v2.0 datasheet: http://datasheets.maximintegrated.com/en/ds/DS3231.pdf
 struct ChronoDotSaru {
 
 //=============================================================================
