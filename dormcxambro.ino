@@ -13,8 +13,8 @@
 //   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(455, PIN, NEO_GRB + NEO_KHZ800);
 //Adafruit_NeoPixel strip = Adafruit_NeoPixel(60*4*4, PIN, NEO_GRB + NEO_KHZ800);
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(222, PIN, NEO_GRB + NEO_KHZ800);
 
 // Note: We have 4 4m lengths, with 60 LEDs per meter (240 per 4m length, 960 total)
 
@@ -140,7 +140,7 @@ void loop () {
         theaterChaseRainbow(50);
     }
     else {
-        LedCounter(2000);
+        LedCounter(1000);
     }
 }
 
@@ -229,7 +229,7 @@ uint32_t Wheel(byte WheelPos) {
 }
 
 // LED count measuring pattern
-void LedCounter (uint8_t wait) {
+void LedCounter (uint8_t waitMs) {
 
     Serial.println("LED counting mode.");
 
@@ -253,6 +253,6 @@ void LedCounter (uint8_t wait) {
     }
 
     strip.show();
-    delay(wait);
+    delay(waitMs);
 
 }
