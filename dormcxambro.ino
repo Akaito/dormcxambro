@@ -4,7 +4,21 @@
 //#include "E:/_work/arduino/led-ceiling/dormcxambro/RTClib/RTClib.h"
 #include "ChronoDotSaru.h"
 
-#define PIN 6
+// Arduino
+//#define STRIP0_PIN 6
+//#define STRIP1_PIN 7
+// Teensy
+#define DEBUG_LED_PIN 13
+#define STRIP0_PIN 11
+#define STRIP1_PIN 12
+#define STRIP0_PIXEL_COUNT 465
+#define STRIP1_PIXEL_COUNT 496
+#define BUTTON0_PIN 2
+#define BUTTON1_PIN 3
+
+#define WAIT_CHUNK_MS 20
+#define EVENT_CAPACITY 6
+
 
 // Parameter 1 = number of pixels in strip
 // Parameter 2 = pin number (most are valid)
@@ -13,8 +27,8 @@
 //   NEO_KHZ400  400 KHz (classic 'v1' (not v2) FLORA pixels, WS2811 drivers)
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(455, PIN, NEO_GRB + NEO_KHZ800);
-//Adafruit_NeoPixel strip = Adafruit_NeoPixel(60*4*4, PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip0 = Adafruit_NeoPixel(STRIP0_PIXEL_COUNT, STRIP0_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(STRIP1_PIXEL_COUNT, STRIP1_PIN, NEO_GRB + NEO_KHZ800);
 
 // Note: We have 4 4m lengths, with 60 LEDs per meter (240 per 4m length, 960 total)
 
@@ -25,15 +39,59 @@ enum EMode {
     MODES
 };
 
+enum EButtonState {
+    BUTTON_STATE_UP = 0,
+    BUTTON_STATE_DOWN,
+};
+
+enum EEvent {
+    EVENT_NONE = 0,
+    EVENT_BUTTON_0_PRESSED,
+    EVENT_BUTTON_0_RELEASED,
+    EVENT_BUTTON_1_PRESSED,
+    EVENT_BUTTON_1_RELEASED,
+};
+
+struct PushButton {
+    unsigned     pin;
+    EButtonState state;
+    EEvent       pressedEvent;
+    EEvent       releasedEvent;
+};
+
 ChronoDotSaru s_chronoDot;
 unsigned secondLastTempUpdate;
 unsigned secondsSinceTempUpdate;
 EMode    mode;
+unsigned temp;
+unsigned temp2;
+
+PushButton pushButtons[] = {
+    { BUTTON0_PIN, BUTTON_STATE_UP, EVENT_BUTTON_0_PRESSED },
+    { BUTTON1_PIN, BUTTON_STATE_UP, EVENT_BUTTON_1_PRESSED },
+};
+#define PUSH_BUTTON_COUNT (sizeof(pushButtons) / sizeof(pushButtons[0]))
+
+EEvent       events[EVENT_CAPACITY];
+unsigned     eventIndex = 0;
+
+void handleEvent(EEvent event);
+bool inputLoop(uint8_t waitMs);
  
 void setup () {
 
-    strip.begin();
-    strip.show(); // Initialize all pixels to 'off'
+    temp2  = 1;
+    memset(events, 0, sizeof(events));
+
+    pinMode(DEBUG_LED_PIN, OUTPUT);
+    pinMode(BUTTON0_PIN, INPUT_PULLUP);
+    pinMode(BUTTON1_PIN, INPUT_PULLUP);
+    digitalWrite(DEBUG_LED_PIN, HIGH); // test
+
+    strip0.begin();
+    strip0.show(); // Initialize all pixels to 'off'
+    strip1.begin();
+    strip1.show();
 
     Wire.begin();
     Serial.begin(9600);
@@ -47,26 +105,28 @@ void setup () {
     s_chronoDot.SetDayOfWeek(ChronoDotSaru::DAY_OF_WEEK_SUNDAY);
     //*/
     //*
-    //s_chronoDot.SetHour24(18);
+    //s_chronoDot.SetHour24(23);
     //s_chronoDot.SetHour12(9, true);
-    //s_chronoDot.SetMinute(23);
-    //s_chronoDot.SetSecond(00);
+    //s_chronoDot.SetMinute(48);
+    //s_chronoDot.SetSecond(30);
     //*/
 
     srandom((unsigned long)(s_chronoDot.Second()) << 8 | (unsigned long)(s_chronoDot.Second()));
-    mode = (random() % 2) ? MODE_WAIT_FOR_ALARM : MODE_ALARM;
+    //mode = (random() % 2) ? MODE_WAIT_FOR_ALARM : MODE_ALARM;
     //mode = MODE_LED_MEASURE;
+    mode = MODE_ALARM;
+    temp = random(3);
 
     // Sunrise
     s_chronoDot.SetHour24(7, ChronoDotSaru::CLOCK_ALARM_1);
-    s_chronoDot.SetMinute(20, ChronoDotSaru::CLOCK_ALARM_1);
+    s_chronoDot.SetMinute(28, ChronoDotSaru::CLOCK_ALARM_1);
     s_chronoDot.SetSecond(0, ChronoDotSaru::CLOCK_ALARM_1);
     //s_chronoDot.SetHour12(10, true, ChronoDotSaru::CLOCK_ALARM_1);
     s_chronoDot.AlarmEnable(ChronoDotSaru::CLOCK_ALARM_1);
 
     // Sunset
-    s_chronoDot.SetHour24(19, ChronoDotSaru::CLOCK_ALARM_2);
-    s_chronoDot.SetMinute(15, ChronoDotSaru::CLOCK_ALARM_2);
+    s_chronoDot.SetHour24(20, ChronoDotSaru::CLOCK_ALARM_2);
+    s_chronoDot.SetMinute(50, ChronoDotSaru::CLOCK_ALARM_2);
     s_chronoDot.AlarmEnable(ChronoDotSaru::CLOCK_ALARM_2);
 
     secondLastTempUpdate = 0;
@@ -77,6 +137,7 @@ void setup () {
 void loop () {
 
     if (mode == MODE_WAIT_FOR_ALARM) {
+        SolidColor(strip0.Color(0x00, 0x00, 0x00), 0);
         s_chronoDot.UpdateCacheRange(ChronoDotSaru::REGISTER_SECONDS, ChronoDotSaru::REGISTER_YEAR);
 
         bool pmNotAm        = s_chronoDot.PmNotAm();
@@ -121,94 +182,180 @@ void loop () {
             mode = MODE_ALARM;
         }
  
-        delay(1000);
+        inputLoop(1000);
     }
     else if (mode == MODE_ALARM) {
         Serial.println("Alarm mode");
 
         // Some example procedures showing how to display to the pixels:
-        colorWipe(strip.Color(255, 0, 0), 50); // Red
-        colorWipe(strip.Color(0, 255, 0), 50); // Green
-        colorWipe(strip.Color(0, 0, 255), 50); // Blue
+        colorWipe(strip0.Color(255, 0, 0), 50); // Red
+        if (mode != MODE_ALARM) return;
+        colorWipe(strip0.Color(0, 255, 0), 50); // Green
+        if (mode != MODE_ALARM) return;
+        colorWipe(strip0.Color(0, 0, 255), 50); // Blue
+        if (mode != MODE_ALARM) return;
         // Send a theater pixel chase in...
-        theaterChase(strip.Color(127, 127, 127), 50); // White
-        theaterChase(strip.Color(127,   0,   0), 50); // Red
-        theaterChase(strip.Color(  0,   0, 127), 50); // Blue
+        theaterChase(strip0.Color(127, 127, 127), 50); // White
+        if (mode != MODE_ALARM) return;
+        theaterChase(strip0.Color(127,   0,   0), 50); // Red
+        if (mode != MODE_ALARM) return;
+        theaterChase(strip0.Color(  0,   0, 127), 50); // Blue
+        if (mode != MODE_ALARM) return;
 
         rainbow(20);
+        if (mode != MODE_ALARM) return;
         rainbowCycle(20);
+        if (mode != MODE_ALARM) return;
         theaterChaseRainbow(50);
     }
     else {
-        LedCounter(1000);
+        switch (temp) {
+            case 0:
+                LedCounter(1000);
+                break;
+            case 1:
+                SolidColor(strip0.Color(255, 0, 0), 1000);
+                break;
+            default:
+                rainbowCycle(60);
+                break;
+        }
     }
+}
+
+void handleEvent(EEvent event) {
+    switch (event) {
+        case EVENT_BUTTON_0_RELEASED: break; // Nothing cares
+
+        // Default case, some other code handles the event.
+        default:
+            if (++eventIndex > EVENT_CAPACITY) {
+                memset(events, EVENT_NONE, sizeof(events));
+                eventIndex = 0;
+            }
+            events[eventIndex] = event;
+            break;
+    }
+}
+
+bool inputLoop(uint8_t waitMs) {
+    unsigned waitMsTemp = waitMs;
+    while (waitMsTemp) {
+        delay(min(WAIT_CHUNK_MS, waitMsTemp));
+        waitMsTemp -= min(WAIT_CHUNK_MS, waitMsTemp);
+
+        EButtonState b0State = digitalRead(BUTTON0_PIN) == LOW ? BUTTON_STATE_DOWN : BUTTON_STATE_UP;
+        if (b0State == pushButtons[0].state)
+            continue;
+        pushButtons[0].state = b0State;
+
+        if (b0State == BUTTON_STATE_DOWN) {
+            if (temp2 = !temp2)
+                digitalWrite(DEBUG_LED_PIN, HIGH);
+            else
+                digitalWrite(DEBUG_LED_PIN, LOW);
+            //handleEvent(pushButtons[0].pressedEvent);
+            mode = EMode((mode + 1) % MODES);
+            return true;
+        }
+        else {
+            //handleEvent(pushButtons[0].releasedEvent);
+        }
+
+        /*
+        if (events[eventIndex] == pushButtons[0].pressedEvent) {
+            --eventIndex;
+            mode = EMode((mode + 1) % MODES);
+            return true;
+        }
+        */
+    }
+
+    return false;
 }
 
 // Fill the dots one after the other with a color
-void colorWipe(uint32_t c, uint8_t wait) {
-  for(uint16_t i=0; i<strip.numPixels(); i++) {
-      strip.setPixelColor(i, c);
-      strip.show();
-      delay(wait);
+void colorWipe(uint32_t c, uint8_t waitMs) {
+  for(uint16_t i=0; i<strip0.numPixels(); i++) {
+      strip0.setPixelColor(i, c);
+      strip1.setPixelColor(i, c);
+      strip0.show();
+      strip1.show();
+      if (inputLoop(waitMs))
+        return;
   }
 }
 
-void rainbow(uint8_t wait) {
+void rainbow(uint8_t waitMs) {
   uint16_t i, j;
 
   for(j=0; j<256; j++) {
-    for(i=0; i<strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel((i+j) & 255));
+    for(i=0; i<strip0.numPixels(); i++) {
+      strip0.setPixelColor(i, Wheel((i+j) & 255));
+      strip1.setPixelColor(i, Wheel((i+j) & 255));
     }
-    strip.show();
-    delay(wait);
+    strip0.show();
+    strip1.show();
+    if (inputLoop(waitMs))
+        return;
   }
 }
 
 // Slightly different, this makes the rainbow equally distributed throughout
-void rainbowCycle(uint8_t wait) {
+void rainbowCycle(uint8_t waitMs) {
   uint16_t i, j;
 
   for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
-    for(i=0; i< strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+    for(i=0; i< strip0.numPixels(); i++) {
+      strip0.setPixelColor(i, Wheel(((i * 256 / strip0.numPixels()) + j) & 255));
+      strip1.setPixelColor(i, Wheel(((i * 256 / strip1.numPixels()) + j) & 255));
     }
-    strip.show();
-    delay(wait);
+    strip0.show();
+    strip1.show();
+    if (inputLoop(waitMs))
+        return;
   }
 }
 
 //Theatre-style crawling lights.
-void theaterChase(uint32_t c, uint8_t wait) {
+void theaterChase(uint32_t c, uint8_t waitMs) {
   for (int j=0; j<10; j++) {  //do 10 cycles of chasing
     for (int q=0; q < 3; q++) {
-      for (int i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, c);    //turn every third pixel on
+      for (int i=0; i < strip0.numPixels(); i=i+3) {
+        strip0.setPixelColor(i+q, c);    //turn every third pixel on
+        strip1.setPixelColor(i+q, c);    //turn every third pixel on
       }
-      strip.show();
+      strip0.show();
+      strip1.show();
      
-      delay(wait);
+      if (inputLoop(waitMs))
+          return;
      
-      for (int i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, 0);        //turn every third pixel off
+      for (int i=0; i < strip0.numPixels(); i=i+3) {
+        strip0.setPixelColor(i+q, 0);        //turn every third pixel off
+        strip1.setPixelColor(i+q, 0);        //turn every third pixel off
       }
     }
   }
 }
 
 //Theatre-style crawling lights with rainbow effect
-void theaterChaseRainbow(uint8_t wait) {
+void theaterChaseRainbow(uint8_t waitMs) {
   for (int j=0; j < 256; j++) {     // cycle all 256 colors in the wheel
     for (int q=0; q < 3; q++) {
-        for (int i=0; i < strip.numPixels(); i=i+3) {
-          strip.setPixelColor(i+q, Wheel( (i+j) % 255));    //turn every third pixel on
+        for (int i=0; i < strip0.numPixels(); i=i+3) {
+          strip0.setPixelColor(i+q, Wheel( (i+j) % 255));    //turn every third pixel on
+          strip1.setPixelColor(i+q, Wheel( (i+j) % 255));    //turn every third pixel on
         }
-        strip.show();
+        strip0.show();
+        strip1.show();
        
-        delay(wait);
+        if (inputLoop(waitMs))
+            return;
        
-        for (int i=0; i < strip.numPixels(); i=i+3) {
-          strip.setPixelColor(i+q, 0);        //turn every third pixel off
+        for (int i=0; i < strip0.numPixels(); i=i+3) {
+          strip0.setPixelColor(i+q, 0);        //turn every third pixel off
+          strip1.setPixelColor(i+q, 0);        //turn every third pixel off
         }
     }
   }
@@ -218,13 +365,13 @@ void theaterChaseRainbow(uint8_t wait) {
 // The colours are a transition r - g - b - back to r.
 uint32_t Wheel(byte WheelPos) {
   if(WheelPos < 85) {
-   return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+   return strip0.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
   } else if(WheelPos < 170) {
    WheelPos -= 85;
-   return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+   return strip0.Color(255 - WheelPos * 3, 0, WheelPos * 3);
   } else {
    WheelPos -= 170;
-   return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+   return strip0.Color(0, WheelPos * 3, 255 - WheelPos * 3);
   }
 }
 
@@ -234,25 +381,42 @@ void LedCounter (uint8_t waitMs) {
     Serial.println("LED counting mode.");
 
     static uint32_t colorTable[] = {
-        strip.Color(0xFF, 0x00, 0x00),
-        strip.Color(0x00, 0xFF, 0x00),
-        strip.Color(0x00, 0x00, 0xFF),
-        strip.Color(0x7F, 0x7F, 0x00),
-        strip.Color(0x7F, 0x00, 0x7F),
-        strip.Color(0x00, 0x7F, 0x7F),
-        strip.Color(0xFF, 0x7F, 0x7F),
-        strip.Color(0x7F, 0xFF, 0x7F),
-        strip.Color(0x7F, 0x7F, 0xFF),
-        strip.Color(0x55, 0x55, 0x55),
+        strip0.Color(0xFF, 0x00, 0x00),
+        strip0.Color(0x00, 0xFF, 0x00),
+        strip0.Color(0x00, 0x00, 0xFF),
+        strip0.Color(0x7F, 0x7F, 0x00),
+        strip0.Color(0x7F, 0x00, 0x7F),
+        strip0.Color(0x00, 0x7F, 0x7F),
+        strip0.Color(0xFF, 0x7F, 0x7F),
+        strip0.Color(0x7F, 0xFF, 0x7F),
+        strip0.Color(0x7F, 0x7F, 0xFF),
+        strip0.Color(0x55, 0x55, 0x55),
     };
     static uint16_t colorTableCount = sizeof(colorTable)/sizeof(colorTable[0]);
 
-    const uint16_t pixelCount = strip.numPixels();
+    const uint16_t pixelCount = strip0.numPixels();
     for (uint16_t i = 0; i < pixelCount; ++i) {
-        strip.setPixelColor(i, colorTable[(i/10) % colorTableCount]);
+        strip0.setPixelColor(i, colorTable[(i/10) % colorTableCount]);
+        strip1.setPixelColor(i, colorTable[(i/10) % colorTableCount]);
     }
 
-    strip.show();
-    delay(waitMs);
+    strip0.show();
+    strip1.show();
+    inputLoop(waitMs);
+
+}
+
+// Solid color
+void SolidColor (uint32_t color, uint8_t waitMs) {
+
+    const uint16_t pixelCount = strip0.numPixels();
+    for (uint16_t i = 0; i < pixelCount; ++i) {
+        strip0.setPixelColor(i, color);
+        strip1.setPixelColor(i, color);
+    }
+
+    strip0.show();
+    strip1.show();
+    inputLoop(waitMs);
 
 }
