@@ -165,6 +165,12 @@ void loop () {
                 int8_t temp = s_chronoDot.GetTempC(true);
                 Serial.print("Temp (C): "); Serial.println(temp);
             }
+
+            // Blink debug LED to show that we're reading from the clock
+            if (temp2 = !temp2)
+                digitalWrite(DEBUG_LED_PIN, HIGH);
+            else
+                digitalWrite(DEBUG_LED_PIN, LOW);
         }
 
         /*
