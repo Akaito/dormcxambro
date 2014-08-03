@@ -137,17 +137,17 @@ struct ChronoDotSaru {
     void GetRegister (
         ERegister reg,
         uint8_t * out,
-        uint8_t outBytes,
-        bool updateCache
+        uint8_t   outBytes,
+        bool      updateCache
     );
 
     // Helpers
     ERegister HourRegisterFromClock (EClock clock);
     ERegister MinuteRegisterFromClock (EClock clock);
     ERegister SecondRegisterFromClock (EClock clock);
-    uint8_t DecimalHourFromRegister (ERegister reg); // 12-hour mode? [1,12] : [0,23]
-    void    WriteHourRegisterFromDecimal (ERegister reg, uint8_t hours);               // [0,23]
-    void    WriteHourRegisterFromDecimal (ERegister reg, uint8_t hours, bool pmNotAm); // [1,12]
+    uint8_t   DecimalHourFromRegister (ERegister reg); // 12-hour mode? [1,12] : [0,23]
+    void      WriteHourRegisterFromDecimal (ERegister reg, uint8_t hours);               // [0,23]
+    void      WriteHourRegisterFromDecimal (ERegister reg, uint8_t hours, bool pmNotAm); // [1,12]
 
     // Time
     uint8_t Hour (EClock clock = CLOCK_TIME);

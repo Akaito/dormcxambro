@@ -11,8 +11,9 @@
 #define DEBUG_LED_PIN 13
 #define STRIP0_PIN 11
 #define STRIP1_PIN 12
-#define STRIP0_PIXEL_COUNT 465
-#define STRIP1_PIXEL_COUNT 496
+#define STRIP0_PIXEL_COUNT 496
+#define STRIP1_PIXEL_COUNT 465
+#define MAX_STRIP_PIXELS (STRIP0_PIXEL_COUNT > STRIP1_PIXEL_COUNT ? STRIP0_PIXEL_COUNT : STRIP1_PIXEL_COUNT)
 #define BUTTON0_PIN 2
 #define BUTTON1_PIN 3
 
@@ -60,11 +61,11 @@ struct PushButton {
 };
 
 ChronoDotSaru s_chronoDot;
-unsigned secondLastTempUpdate;
-unsigned secondsSinceTempUpdate;
-EMode    mode;
-unsigned temp;
-unsigned temp2;
+unsigned      secondLastTempUpdate;
+unsigned      secondsSinceTempUpdate;
+EMode         mode;
+unsigned      temp;
+unsigned      temp2;
 
 PushButton pushButtons[] = {
     { BUTTON0_PIN, BUTTON_STATE_UP, EVENT_BUTTON_0_PRESSED },
@@ -72,8 +73,8 @@ PushButton pushButtons[] = {
 };
 #define PUSH_BUTTON_COUNT (sizeof(pushButtons) / sizeof(pushButtons[0]))
 
-EEvent       events[EVENT_CAPACITY];
-unsigned     eventIndex = 0;
+EEvent        events[EVENT_CAPACITY];
+unsigned      eventIndex = 0;
 
 void handleEvent(EEvent event);
 bool inputLoop(uint8_t waitMs);
@@ -215,6 +216,7 @@ void loop () {
         theaterChaseRainbow(50);
     }
     else {
+        temp = 0;
         switch (temp) {
             case 0:
                 LedCounter(1000);
@@ -281,88 +283,92 @@ bool inputLoop(uint8_t waitMs) {
 }
 
 // Fill the dots one after the other with a color
-void colorWipe(uint32_t c, uint8_t waitMs) {
-  for(uint16_t i=0; i<strip0.numPixels(); i++) {
-      strip0.setPixelColor(i, c);
-      strip1.setPixelColor(i, c);
-      strip0.show();
-      strip1.show();
-      if (inputLoop(waitMs))
-        return;
-  }
+void colorWipe (uint32_t c, uint8_t waitMs) {
+    for(uint16_t i = 0;  i < MAX_STRIP_PIXELS;  ++i) {
+        if (i <= STRIP0_PIXEL_COUNT)
+            strip0.setPixelColor(i, c);
+        if (i <= STRIP1_PIXEL_COUNT)
+            strip1.setPixelColor(i, c);
+        strip0.show();
+        strip1.show();
+        if (inputLoop(waitMs))
+            return;
+    }
 }
 
-void rainbow(uint8_t waitMs) {
-  uint16_t i, j;
+void rainbow (uint8_t waitMs) {
+    uint16_t i, j;
 
-  for(j=0; j<256; j++) {
-    for(i=0; i<strip0.numPixels(); i++) {
-      strip0.setPixelColor(i, Wheel((i+j) & 255));
-      strip1.setPixelColor(i, Wheel((i+j) & 255));
+    for (j = 0; j < 256; ++j) {
+        for (i = 0; i < MAX_STRIP_PIXELS; ++i) {
+            if (i <= STRIP0_PIXEL_COUNT)
+                strip0.setPixelColor(i, Wheel((i+j) & 255));
+            if (i <= STRIP1_PIXEL_COUNT)
+                strip1.setPixelColor(i, Wheel((i+j) & 255));
+        }
+        strip0.show();
+        strip1.show();
+        if (inputLoop(waitMs))
+            return;
     }
-    strip0.show();
-    strip1.show();
-    if (inputLoop(waitMs))
-        return;
-  }
 }
 
 // Slightly different, this makes the rainbow equally distributed throughout
-void rainbowCycle(uint8_t waitMs) {
-  uint16_t i, j;
+void rainbowCycle (uint8_t waitMs) {
+    uint16_t i, j;
 
-  for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
-    for(i=0; i< strip0.numPixels(); i++) {
-      strip0.setPixelColor(i, Wheel(((i * 256 / strip0.numPixels()) + j) & 255));
-      strip1.setPixelColor(i, Wheel(((i * 256 / strip1.numPixels()) + j) & 255));
+    for (j = 0; j < 256*5; ++j) { // 5 cycles of all colors on wheel
+        for (i = 0; i < STRIP0_PIXEL_COUNT; ++i)
+            strip0.setPixelColor(i, Wheel(((i * 256 / strip0.numPixels()) + j) & 255));
+        for (i = 0; i < STRIP1_PIXEL_COUNT; ++i)
+            strip1.setPixelColor(i, Wheel(((i * 256 / strip1.numPixels()) + j) & 255));
+        strip0.show();
+        strip1.show();
+        if (inputLoop(waitMs))
+            return;
     }
-    strip0.show();
-    strip1.show();
-    if (inputLoop(waitMs))
-        return;
-  }
 }
 
 //Theatre-style crawling lights.
 void theaterChase(uint32_t c, uint8_t waitMs) {
-  for (int j=0; j<10; j++) {  //do 10 cycles of chasing
-    for (int q=0; q < 3; q++) {
-      for (int i=0; i < strip0.numPixels(); i=i+3) {
+  for (int j = 0; j < 10; ++j) {  //do 10 cycles of chasing
+    for (int q = 0; q < 3; ++q) {
+      for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
         strip0.setPixelColor(i+q, c);    //turn every third pixel on
+      for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
         strip1.setPixelColor(i+q, c);    //turn every third pixel on
-      }
       strip0.show();
       strip1.show();
      
       if (inputLoop(waitMs))
           return;
      
-      for (int i=0; i < strip0.numPixels(); i=i+3) {
+      for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
         strip0.setPixelColor(i+q, 0);        //turn every third pixel off
+      for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
         strip1.setPixelColor(i+q, 0);        //turn every third pixel off
-      }
     }
   }
 }
 
 //Theatre-style crawling lights with rainbow effect
 void theaterChaseRainbow(uint8_t waitMs) {
-  for (int j=0; j < 256; j++) {     // cycle all 256 colors in the wheel
-    for (int q=0; q < 3; q++) {
-        for (int i=0; i < strip0.numPixels(); i=i+3) {
+  for (int j = 0; j < 256; ++j) {     // cycle all 256 colors in the wheel
+    for (int q = 0; q < 3; ++q) {
+        for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
           strip0.setPixelColor(i+q, Wheel( (i+j) % 255));    //turn every third pixel on
+        for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
           strip1.setPixelColor(i+q, Wheel( (i+j) % 255));    //turn every third pixel on
-        }
         strip0.show();
         strip1.show();
        
         if (inputLoop(waitMs))
             return;
        
-        for (int i=0; i < strip0.numPixels(); i=i+3) {
+        for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
           strip0.setPixelColor(i+q, 0);        //turn every third pixel off
+        for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
           strip1.setPixelColor(i+q, 0);        //turn every third pixel off
-        }
     }
   }
 }
@@ -400,11 +406,12 @@ void LedCounter (uint8_t waitMs) {
     };
     static uint16_t colorTableCount = sizeof(colorTable)/sizeof(colorTable[0]);
 
-    const uint16_t pixelCount = strip0.numPixels();
-    for (uint16_t i = 0; i < pixelCount; ++i) {
+    const uint16_t pixelCount0 = strip0.numPixels();
+    for (uint16_t i = 0; i < pixelCount0; ++i)
         strip0.setPixelColor(i, colorTable[(i/10) % colorTableCount]);
+    const uint16_t pixelCount1 = strip1.numPixels();
+    for (uint16_t i = 0; i < pixelCount1; ++i)
         strip1.setPixelColor(i, colorTable[(i/10) % colorTableCount]);
-    }
 
     strip0.show();
     strip1.show();
@@ -415,11 +422,10 @@ void LedCounter (uint8_t waitMs) {
 // Solid color
 void SolidColor (uint32_t color, uint8_t waitMs) {
 
-    const uint16_t pixelCount = strip0.numPixels();
-    for (uint16_t i = 0; i < pixelCount; ++i) {
+    for (uint16_t i = 0; i < STRIP0_PIXEL_COUNT; ++i)
         strip0.setPixelColor(i, color);
+    for (uint16_t i = 0; i < STRIP1_PIXEL_COUNT; ++i)
         strip1.setPixelColor(i, color);
-    }
 
     strip0.show();
     strip1.show();
