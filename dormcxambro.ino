@@ -1,8 +1,8 @@
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
 //#include "../../RTClib/RTClib.h"
-//#include "E:/_work/arduino/led-ceiling/dormcxambro/RTClib/RTClib.h"
 #include "ChronoDotSaru.h"
+//#include "Pixel1dAnimSaru.h"
 
 // Arduino
 //#define STRIP0_PIN 6
@@ -11,11 +11,12 @@
 #define DEBUG_LED_PIN 13
 #define STRIP0_PIN 11
 #define STRIP1_PIN 12
+#define BUTTON0_PIN 2
+#define BUTTON1_PIN 3
+
 #define STRIP0_PIXEL_COUNT 496
 #define STRIP1_PIXEL_COUNT 465
 #define MAX_STRIP_PIXELS (STRIP0_PIXEL_COUNT > STRIP1_PIXEL_COUNT ? STRIP0_PIXEL_COUNT : STRIP1_PIXEL_COUNT)
-#define BUTTON0_PIN 2
-#define BUTTON1_PIN 3
 
 #define WAIT_CHUNK_MS 20
 #define EVENT_CAPACITY 6
@@ -40,6 +41,16 @@ enum EMode {
     MODES
 };
 
+enum EPattern {
+    PATTERN_WIPE_RED = 0,
+    PATTERN_WIPE_GREEN,
+    PATTERN_WIPE_BLUE,
+    PATTERN_THEATER_WHITE,
+    PATTERN_THEATER_RED,
+    PATTERN_THEATER_BLUE_ORANGE,
+    PATTERNS
+};
+
 enum EButtonState {
     BUTTON_STATE_UP = 0,
     BUTTON_STATE_DOWN,
@@ -61,11 +72,21 @@ struct PushButton {
 };
 
 ChronoDotSaru s_chronoDot;
-unsigned      secondLastTempUpdate;
-unsigned      secondsSinceTempUpdate;
-EMode         mode;
-unsigned      temp;
-unsigned      temp2;
+unsigned      secondLastTempUpdate   = 0;
+unsigned      secondsSinceTempUpdate = 0;
+EMode         mode                   = MODE_ALARM;
+EPattern      s_pattern              = PATTERN_THEATER_WHITE;
+//EPattern      s_pattern              = PATTERN_WIPE_BLUE;
+unsigned      temp                   = 0;
+unsigned      temp2                  = 0;
+
+static unsigned long s_progLifetimeMs         =    0; // Prog lifetime (milliseconds)
+static unsigned long s_progLifetimeScaledMs   =    0; // Offset from prog lifetime due to scaling (milliseconds)
+static unsigned long s_patternLifetimeMs      =    0; // Pattern lifetime (milliseconds)
+static unsigned long s_lifetimeOffsetPerLoop  =    0; // 0 = no effect.  Adder to lifetimes each loop().
+static unsigned long s_patternFrameDurationMs =  100;
+static uint16_t      s_patternFrame           =    0;
+static unsigned long s_patternTotalDurationMs = 5000; // Auto-switch patterns after this time.  Some patterns don't obey this (colorWipe).
 
 PushButton pushButtons[] = {
     { BUTTON0_PIN, BUTTON_STATE_UP, EVENT_BUTTON_0_PRESSED },
@@ -78,6 +99,20 @@ unsigned      eventIndex = 0;
 
 void handleEvent(EEvent event);
 bool inputLoop(uint8_t waitMs);
+
+// Pattern funcs
+bool colorWipe (
+    uint32_t color,
+    uint16_t firstPixelIndex = 0,
+    uint16_t lastPixelIndex  = MAX_STRIP_PIXELS
+);
+bool theaterChase(
+    uint32_t onColor,
+    uint32_t offColor,
+    uint16_t everyNthIsOn,
+    uint16_t firstPixelIndex = 0,
+    uint16_t lastPixelIndex  = MAX_STRIP_PIXELS
+);
  
 void setup () {
 
@@ -95,7 +130,7 @@ void setup () {
     strip1.show();
 
     Wire.begin();
-    Serial.begin(9600);
+    //Serial.begin(9600);
 
     s_chronoDot.Init();
     //s_chronoDot.SetTwelveHourMode(false);
@@ -114,15 +149,12 @@ void setup () {
 
     srandom((unsigned long)(s_chronoDot.Second()) << 8 | (unsigned long)(s_chronoDot.Second()));
     //mode = (random() % 2) ? MODE_WAIT_FOR_ALARM : MODE_ALARM;
-    //mode = MODE_LED_MEASURE;
-    mode = MODE_ALARM;
     temp = random(3);
 
     // Sunrise
     s_chronoDot.SetHour24(7, ChronoDotSaru::CLOCK_ALARM_1);
     s_chronoDot.SetMinute(28, ChronoDotSaru::CLOCK_ALARM_1);
     s_chronoDot.SetSecond(0, ChronoDotSaru::CLOCK_ALARM_1);
-    //s_chronoDot.SetHour12(10, true, ChronoDotSaru::CLOCK_ALARM_1);
     s_chronoDot.AlarmEnable(ChronoDotSaru::CLOCK_ALARM_1);
 
     // Sunset
@@ -130,12 +162,19 @@ void setup () {
     s_chronoDot.SetMinute(50, ChronoDotSaru::CLOCK_ALARM_2);
     s_chronoDot.AlarmEnable(ChronoDotSaru::CLOCK_ALARM_2);
 
-    secondLastTempUpdate = 0;
-    secondsSinceTempUpdate = 0;
-
 }
  
 void loop () {
+
+    // milliseconds delta from last loop
+    const unsigned dtMs = unsigned(millis() - s_progLifetimeMs);
+    // Wraps at about 50 days running time.
+    s_progLifetimeMs       += dtMs;
+    s_progLifetimeScaledMs += dtMs + s_lifetimeOffsetPerLoop;
+    s_patternLifetimeMs    += dtMs + s_lifetimeOffsetPerLoop;
+
+    const uint16_t lastFrame = s_patternFrame;
+    s_patternFrame           = uint16_t(s_patternLifetimeMs / s_patternFrameDurationMs);
 
     if (mode == MODE_WAIT_FOR_ALARM) {
         SolidColor(strip0.Color(0x00, 0x00, 0x00), 0);
@@ -192,28 +231,92 @@ void loop () {
         inputLoop(1000);
     }
     else if (mode == MODE_ALARM) {
-        Serial.println("Alarm mode");
+        //Serial.println("Alarm mode");
 
-        // Some example procedures showing how to display to the pixels:
-        colorWipe(strip0.Color(255, 0, 0), 50); // Red
-        if (mode != MODE_ALARM) return;
-        colorWipe(strip0.Color(0, 255, 0), 50); // Green
-        if (mode != MODE_ALARM) return;
-        colorWipe(strip0.Color(0, 0, 255), 50); // Blue
-        if (mode != MODE_ALARM) return;
-        // Send a theater pixel chase in...
-        theaterChase(strip0.Color(127, 127, 127), 50); // White
-        if (mode != MODE_ALARM) return;
-        theaterChase(strip0.Color(127,   0,   0), 50); // Red
-        if (mode != MODE_ALARM) return;
-        theaterChase(strip0.Color(  0,   0, 127), 50); // Blue
-        if (mode != MODE_ALARM) return;
+        //if ((s_progLifetimeMs / 500) % 2 == 0)
+        if (s_patternFrame % 2 == 0)
+        //if (s_pattern % 2 == 0)
+            digitalWrite(DEBUG_LED_PIN, HIGH);
+        else
+            digitalWrite(DEBUG_LED_PIN, LOW);
 
+        if (s_patternFrame == lastFrame)
+            return;
+
+        bool nextPattern = false;
+        // "Render"
+        switch (s_pattern) {
+            case PATTERN_WIPE_RED:
+                nextPattern = colorWipe(strip0.Color(255, 0, 0));
+                break;
+            case PATTERN_WIPE_GREEN:
+                nextPattern = colorWipe(strip0.Color(0, 255, 0));
+                break;
+            case PATTERN_WIPE_BLUE:
+                nextPattern = colorWipe(strip0.Color(0, 0, 255));
+                break;
+            case PATTERN_THEATER_WHITE:
+                nextPattern = (s_patternLifetimeMs >= s_patternTotalDurationMs) || theaterChase(
+                    strip0.Color(0x8F, 0x8F, 0x8F),
+                    0,
+                    3
+                );
+                break;
+            case PATTERN_THEATER_RED:
+                nextPattern = (s_patternLifetimeMs >= s_patternTotalDurationMs) || theaterChase(
+                    strip0.Color(0x7F, 0x00, 0x00),
+                    0,
+                    3
+                );
+                break;
+            case PATTERN_THEATER_BLUE_ORANGE:
+                nextPattern = (s_patternLifetimeMs >= s_patternTotalDurationMs) || theaterChase(
+                    strip0.Color(0xFF, 0x7F, 0x00),
+                    strip0.Color(0x00, 0x00, 0x7F),
+                    3
+                );
+                break;
+            default:
+                nextPattern = true;
+        }
+        // "Update"
+        if (nextPattern) {
+            s_pattern = EPattern((unsigned(s_pattern) + 1));
+            if (s_pattern >= PATTERNS)
+                s_pattern = EPattern(0);
+            s_patternLifetimeMs = 0;
+            s_patternFrame      = uint16_t(-1); // Force redraw on zeroth frame.
+
+            // Change frame duration
+            switch (s_pattern) {
+                case PATTERN_WIPE_RED:
+                    s_patternFrameDurationMs = 40;
+                    break;
+                case PATTERN_WIPE_GREEN:
+                    s_patternFrameDurationMs = 16;
+                    break;
+                case PATTERN_WIPE_BLUE:
+                    s_patternFrameDurationMs = 8;
+                    break;
+                case PATTERN_THEATER_WHITE:
+                case PATTERN_THEATER_RED:
+                case PATTERN_THEATER_BLUE_ORANGE:
+                    s_patternFrameDurationMs = 16;
+                    break;
+            }
+        }
+
+        // "Present"
+        strip0.show();
+        strip1.show();
+
+        /*
         rainbow(20);
         if (mode != MODE_ALARM) return;
         rainbowCycle(20);
         if (mode != MODE_ALARM) return;
         theaterChaseRainbow(50);
+        */
     }
     else {
         temp = 0;
@@ -282,18 +385,29 @@ bool inputLoop(uint8_t waitMs) {
     return false;
 }
 
-// Fill the dots one after the other with a color
-void colorWipe (uint32_t c, uint8_t waitMs) {
-    for(uint16_t i = 0;  i < MAX_STRIP_PIXELS;  ++i) {
+//=============================================================================
+// Fill the dots one after the other with a color.
+// Returns true when pattern is done.
+bool colorWipe (
+    uint32_t      color,
+    uint16_t      firstPixelIndex,
+    uint16_t      lastPixelIndex
+) {
+
+    const uint16_t framesTotal = lastPixelIndex - firstPixelIndex;
+    if (s_patternFrame >= framesTotal)
+        return true;
+
+    const uint16_t lastIndexNow = firstPixelIndex + s_patternFrame;
+    for (uint16_t i = firstPixelIndex; i <= lastIndexNow; ++i) {
         if (i <= STRIP0_PIXEL_COUNT)
-            strip0.setPixelColor(i, c);
+            strip0.setPixelColor(i, color);
         if (i <= STRIP1_PIXEL_COUNT)
-            strip1.setPixelColor(i, c);
-        strip0.show();
-        strip1.show();
-        if (inputLoop(waitMs))
-            return;
+            strip1.setPixelColor(i, color);
     }
+
+    return false;
+
 }
 
 void rainbow (uint8_t waitMs) {
@@ -329,26 +443,51 @@ void rainbowCycle (uint8_t waitMs) {
     }
 }
 
+//=============================================================================
 //Theatre-style crawling lights.
-void theaterChase(uint32_t c, uint8_t waitMs) {
-  for (int j = 0; j < 10; ++j) {  //do 10 cycles of chasing
-    for (int q = 0; q < 3; ++q) {
-      for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
-        strip0.setPixelColor(i+q, c);    //turn every third pixel on
-      for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
-        strip1.setPixelColor(i+q, c);    //turn every third pixel on
-      strip0.show();
-      strip1.show();
-     
-      if (inputLoop(waitMs))
-          return;
-     
-      for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
-        strip0.setPixelColor(i+q, 0);        //turn every third pixel off
-      for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
-        strip1.setPixelColor(i+q, 0);        //turn every third pixel off
+bool theaterChase (
+    uint32_t onColor,
+    uint32_t offColor,
+    uint16_t everyNthIsOn,
+    uint16_t firstPixelIndex,
+    uint16_t lastPixelIndex
+) {
+
+    for (uint16_t i = firstPixelIndex; i <= lastPixelIndex; ++i) {
+        if ((i + s_patternFrame) % everyNthIsOn == 0) {
+            if (i < STRIP0_PIXEL_COUNT)
+                strip0.setPixelColor(i, onColor);
+            if (i < STRIP1_PIXEL_COUNT)
+                strip1.setPixelColor(i, onColor);
+        }
+        else {
+            if (i < STRIP0_PIXEL_COUNT)
+                strip0.setPixelColor(i, offColor);
+            if (i < STRIP1_PIXEL_COUNT)
+                strip1.setPixelColor(i, offColor);
+        }
     }
-  }
+
+    return false;
+
+    /*
+    for (int q = 0; q < 3; ++q) {
+        for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
+            strip0.setPixelColor(i+q, c);    //turn every third pixel on
+        for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
+            strip1.setPixelColor(i+q, c);    //turn every third pixel on
+        strip0.show();
+        strip1.show();
+
+        if (inputLoop(waitMs))
+            return;
+
+        for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
+            strip0.setPixelColor(i+q, 0);        //turn every third pixel off
+        for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
+            strip1.setPixelColor(i+q, 0);        //turn every third pixel off
+    }
+    */
 }
 
 //Theatre-style crawling lights with rainbow effect
