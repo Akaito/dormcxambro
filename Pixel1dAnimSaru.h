@@ -1,8 +1,111 @@
 #pragma once
-#if 0
 #include <Adafruit_NeoPixel.h>
 
-// Tweener from/inspired-by https://code.google.com/p/cpptweener/
+/**********************************************************************************
+*
+*  Adafruit
+*
+**********************************************************************************/
+
+// Input a value 0 to 255 to get a color value.
+// The colors are a transition r - g - b - back to r.
+uint32_t Wheel(byte WheelPos);
+
+
+
+/**********************************************************************************
+*
+*  Patterns
+*
+**********************************************************************************/
+
+//=============================================================================
+class IPattern {
+
+public:
+    // == Accessors =================================================
+    virtual uint16_t * FrameDurationMs () = 0;
+    virtual uint16_t * Frame () = 0;
+    virtual bool       IsColorsDirty () const = 0;
+    virtual bool       IsDone () const = 0;
+
+    // == Methods ===================================================
+    virtual void SetStrips (Adafruit_NeoPixel * strips, uint8_t count) = 0;
+
+    virtual void Prepare () = 0;
+    virtual void Update (uint16_t dtMs) = 0;
+    virtual void Present () = 0;
+
+};
+
+//=============================================================================
+class CPattern : public IPattern {
+
+protected:
+    // == Data ======================================================
+    Adafruit_NeoPixel * strips;
+    uint8_t             stripCount;
+    uint16_t            longestStripCount;
+
+    uint16_t frameDurationMs;
+    uint16_t frame;
+    uint16_t timeMs;
+    uint16_t timeThisFrameMs;
+
+    bool colorsDirty;
+
+
+public:
+    CPattern (uint16_t frameDuration = 16);
+
+    // == Accessors =================================================
+    virtual uint16_t * FrameDurationMs () { return &frameDurationMs; }
+    virtual uint16_t * Frame () { return &frame; }
+    virtual bool       IsColorsDirty () const { return colorsDirty; }
+
+    // == Methods ===================================================
+    virtual void SetStrips (Adafruit_NeoPixel * strips, uint8_t count);
+
+    virtual void Prepare () { timeMs = frame = 0; colorsDirty = true; }
+    virtual void Update (uint16_t dtMs);
+    virtual void Present () {
+        colorsDirty = false;
+        for (uint8_t i = 0; i < stripCount; ++i)
+            ;//strips[i].show();
+    }
+
+};
+
+//=============================================================================
+class CPatternRainbow : public CPattern {
+
+public:
+    // == Accessors =================================================
+    virtual bool IsDone () const { return false; } // Pattern repeats for any duration.
+
+    // == Methods ===================================================
+    CPatternRainbow (uint16_t frameDuration = 20);
+
+    virtual void Prepare () {}
+    virtual void Update (uint16_t dtMs);
+
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if 0
+
+// Tweening code from/inspired-by https://code.google.com/p/cpptweener/
 
 
 namespace Pixel1dAnimSaru {

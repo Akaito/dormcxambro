@@ -2,7 +2,7 @@
 #include <Adafruit_NeoPixel.h>
 //#include "../../RTClib/RTClib.h"
 #include "ChronoDotSaru.h"
-//#include "Pixel1dAnimSaru.h"
+#include "Pixel1dAnimSaru.h"
 
 // Arduino
 //#define STRIP0_PIN 6
@@ -31,6 +31,8 @@
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
 Adafruit_NeoPixel strip0 = Adafruit_NeoPixel(STRIP0_PIXEL_COUNT, STRIP0_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(STRIP1_PIXEL_COUNT, STRIP1_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel * strips[2]  = {0};
+uint8_t             stripCount = sizeof(strips) / sizeof(strips[0]);
 
 // Note: We have 4 4m lengths, with 60 LEDs per meter (240 per 4m length, 960 total)
 
@@ -92,6 +94,8 @@ static unsigned long s_patternTotalDurationMs = 5000; // Auto-switch patterns af
 static uint16_t      s_patternFrameDurationsMs[PATTERNS];
 static unsigned long s_patternDurationsMs[PATTERNS];
 
+static IPattern * s_patternNew = 0;
+
 PushButton pushButtons[] = {
     { BUTTON0_PIN, BUTTON_STATE_UP, EVENT_BUTTON_0_PRESSED },
     { BUTTON1_PIN, BUTTON_STATE_UP, EVENT_BUTTON_1_PRESSED },
@@ -121,7 +125,8 @@ void rainbow (
     uint16_t firstPixelIndex = 0,
     uint16_t lastPixelIndex  = MAX_STRIP_PIXELS
 );
- 
+
+//=============================================================================
 void setup () {
 
     temp2 = 1;
@@ -134,8 +139,14 @@ void setup () {
 
     strip0.begin();
     strip0.show(); // Initialize all pixels to 'off'
+    strips[0] = &strip0;
     strip1.begin();
     strip1.show();
+    strips[1] = &strip1;
+
+    s_patternNew = new CPatternRainbow();
+    s_patternNew->SetStrips(strips[0], stripCount);
+    s_patternNew->Prepare();
 
     s_patternFrameDurationsMs[PATTERN_WIPE_RED]            = 40;
     s_patternFrameDurationsMs[PATTERN_WIPE_GREEN]          = 16;
@@ -192,7 +203,8 @@ void setup () {
     s_chronoDot.AlarmEnable(ChronoDotSaru::CLOCK_ALARM_2);
 
 }
- 
+
+//=============================================================================
 void loop () {
 
     // milliseconds delta from last loop
@@ -207,9 +219,10 @@ void loop () {
     else if (s_patternFrameDurationMs == 0)
         s_patternFrameDurationMs = 500;
 
-    const uint16_t lastFrame = s_patternFrame;
-    s_patternFrame           = uint16_t(s_patternLifetimeMs / s_patternFrameDurationMs);
-    //s_patternFrame           = uint16_t(s_patternLifetimeMs / 1000);
+    //const uint16_t lastFrame = s_patternFrame;
+    //s_patternFrame           = uint16_t(s_patternLifetimeMs / s_patternFrameDurationMs);
+    s_patternFrame           = uint16_t(s_patternLifetimeMs / 1000);
+    //s_patternFrame           = uint16_t(s_patternLifetimeMs / foo->GetTime());
 
     if (mode == MODE_WAIT_FOR_ALARM) {
         SolidColor(strip0.Color(0x00, 0x00, 0x00), 0);
@@ -268,12 +281,27 @@ void loop () {
     else if (mode == MODE_ALARM) {
         //Serial.println("Alarm mode");
 
+        s_patternNew->Update(dtMs);
+
+        //*s_patternNew->Frame() = s_patternFrame;
+
+        static bool b = false;
         //if ((s_progLifetimeMs / 500) % 2 == 0)
-        if (s_patternFrame % 2 == 0)
+        if (*s_patternNew->Frame() % 2 == 0)
+        //if (s_patternFrame % 2 == 0)
         //if (s_pattern % 2 == 0)
+        //if (b)
             digitalWrite(DEBUG_LED_PIN, HIGH);
         else
             digitalWrite(DEBUG_LED_PIN, LOW);
+        b = !b;
+        //delay(1);
+
+        //if (s_patternNew->IsColorsDirty())
+            //s_patternNew->Present();
+
+
+#if 0
 
         if (s_patternFrame == lastFrame)
             return;
@@ -345,6 +373,7 @@ void loop () {
         if (mode != MODE_ALARM) return;
         theaterChaseRainbow(50);
         */
+#endif
     }
     else {
         temp = 0;
@@ -518,20 +547,6 @@ void theaterChaseRainbow(uint8_t waitMs) {
         for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
           strip1.setPixelColor(i+q, 0);        //turn every third pixel off
     }
-  }
-}
-
-// Input a value 0 to 255 to get a color value.
-// The colours are a transition r - g - b - back to r.
-uint32_t Wheel(byte WheelPos) {
-  if(WheelPos < 85) {
-   return strip0.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
-  } else if(WheelPos < 170) {
-   WheelPos -= 85;
-   return strip0.Color(255 - WheelPos * 3, 0, WheelPos * 3);
-  } else {
-   WheelPos -= 170;
-   return strip0.Color(0, WheelPos * 3, 255 - WheelPos * 3);
   }
 }
 
