@@ -48,6 +48,8 @@ enum EPattern {
     PATTERN_THEATER_WHITE,
     PATTERN_THEATER_RED,
     PATTERN_THEATER_BLUE_ORANGE,
+    PATTERN_RAINBOW_WHITE,
+    PATTERN_RAINBOW_HUE_CYCLE,
     PATTERNS
 };
 
@@ -75,18 +77,20 @@ ChronoDotSaru s_chronoDot;
 unsigned      secondLastTempUpdate   = 0;
 unsigned      secondsSinceTempUpdate = 0;
 EMode         mode                   = MODE_ALARM;
-EPattern      s_pattern              = PATTERN_THEATER_WHITE;
-//EPattern      s_pattern              = PATTERN_WIPE_BLUE;
+EPattern      s_pattern;//              = PATTERN_RAINBOW_WHITE;
 unsigned      temp                   = 0;
 unsigned      temp2                  = 0;
 
 static unsigned long s_progLifetimeMs         =    0; // Prog lifetime (milliseconds)
 static unsigned long s_progLifetimeScaledMs   =    0; // Offset from prog lifetime due to scaling (milliseconds)
-static unsigned long s_patternLifetimeMs      =    0; // Pattern lifetime (milliseconds)
+static uint32_t      s_patternLifetimeMs      =    0; // Pattern lifetime (milliseconds)
 static unsigned long s_lifetimeOffsetPerLoop  =    0; // 0 = no effect.  Adder to lifetimes each loop().
-static unsigned long s_patternFrameDurationMs =  100;
+static uint16_t      s_patternFrameDurationMs;// = 1000;
 static uint16_t      s_patternFrame           =    0;
 static unsigned long s_patternTotalDurationMs = 5000; // Auto-switch patterns after this time.  Some patterns don't obey this (colorWipe).
+
+static uint16_t      s_patternFrameDurationsMs[PATTERNS];
+static unsigned long s_patternDurationsMs[PATTERNS];
 
 PushButton pushButtons[] = {
     { BUTTON0_PIN, BUTTON_STATE_UP, EVENT_BUTTON_0_PRESSED },
@@ -106,17 +110,21 @@ bool colorWipe (
     uint16_t firstPixelIndex = 0,
     uint16_t lastPixelIndex  = MAX_STRIP_PIXELS
 );
-bool theaterChase(
+void theaterChase(
     uint32_t onColor,
     uint32_t offColor,
     uint16_t everyNthIsOn,
     uint16_t firstPixelIndex = 0,
     uint16_t lastPixelIndex  = MAX_STRIP_PIXELS
 );
+void rainbow (
+    uint16_t firstPixelIndex = 0,
+    uint16_t lastPixelIndex  = MAX_STRIP_PIXELS
+);
  
 void setup () {
 
-    temp2  = 1;
+    temp2 = 1;
     memset(events, 0, sizeof(events));
 
     pinMode(DEBUG_LED_PIN, OUTPUT);
@@ -128,6 +136,27 @@ void setup () {
     strip0.show(); // Initialize all pixels to 'off'
     strip1.begin();
     strip1.show();
+
+    s_patternFrameDurationsMs[PATTERN_WIPE_RED]            = 40;
+    s_patternFrameDurationsMs[PATTERN_WIPE_GREEN]          = 16;
+    s_patternFrameDurationsMs[PATTERN_WIPE_BLUE]           =  8;
+    s_patternFrameDurationsMs[PATTERN_THEATER_WHITE]       = 16;
+    s_patternFrameDurationsMs[PATTERN_THEATER_RED]         = 16;
+    s_patternFrameDurationsMs[PATTERN_THEATER_BLUE_ORANGE] = 16;
+    s_patternFrameDurationsMs[PATTERN_RAINBOW_WHITE]       = 20;
+    s_patternFrameDurationsMs[PATTERN_RAINBOW_HUE_CYCLE]   = 20;
+
+    s_patternDurationsMs[PATTERN_WIPE_RED]            =    0; // Ignored
+    s_patternDurationsMs[PATTERN_WIPE_GREEN]          =    0; // Ignored
+    s_patternDurationsMs[PATTERN_WIPE_BLUE]           =    0; // Ignored
+    s_patternDurationsMs[PATTERN_THEATER_WHITE]       = 5000;
+    s_patternDurationsMs[PATTERN_THEATER_RED]         = 5000;
+    s_patternDurationsMs[PATTERN_THEATER_BLUE_ORANGE] = 5000;
+    s_patternDurationsMs[PATTERN_RAINBOW_WHITE]       = 5000;
+    s_patternDurationsMs[PATTERN_RAINBOW_HUE_CYCLE]   = 5000;
+
+    s_pattern                = PATTERN_RAINBOW_WHITE;
+    s_patternFrameDurationMs = s_patternFrameDurationsMs[s_pattern];
 
     Wire.begin();
     //Serial.begin(9600);
@@ -173,8 +202,14 @@ void loop () {
     s_progLifetimeScaledMs += dtMs + s_lifetimeOffsetPerLoop;
     s_patternLifetimeMs    += dtMs + s_lifetimeOffsetPerLoop;
 
+    if (s_patternFrameDurationMs > 1000)
+        s_patternFrameDurationMs = 1000;
+    else if (s_patternFrameDurationMs == 0)
+        s_patternFrameDurationMs = 500;
+
     const uint16_t lastFrame = s_patternFrame;
     s_patternFrame           = uint16_t(s_patternLifetimeMs / s_patternFrameDurationMs);
+    //s_patternFrame           = uint16_t(s_patternLifetimeMs / 1000);
 
     if (mode == MODE_WAIT_FOR_ALARM) {
         SolidColor(strip0.Color(0x00, 0x00, 0x00), 0);
@@ -245,39 +280,49 @@ void loop () {
 
         bool nextPattern = false;
         // "Render"
-        switch (s_pattern) {
-            case PATTERN_WIPE_RED:
-                nextPattern = colorWipe(strip0.Color(255, 0, 0));
-                break;
-            case PATTERN_WIPE_GREEN:
-                nextPattern = colorWipe(strip0.Color(0, 255, 0));
-                break;
-            case PATTERN_WIPE_BLUE:
-                nextPattern = colorWipe(strip0.Color(0, 0, 255));
-                break;
-            case PATTERN_THEATER_WHITE:
-                nextPattern = (s_patternLifetimeMs >= s_patternTotalDurationMs) || theaterChase(
-                    strip0.Color(0x8F, 0x8F, 0x8F),
-                    0,
-                    3
-                );
-                break;
-            case PATTERN_THEATER_RED:
-                nextPattern = (s_patternLifetimeMs >= s_patternTotalDurationMs) || theaterChase(
-                    strip0.Color(0x7F, 0x00, 0x00),
-                    0,
-                    3
-                );
-                break;
-            case PATTERN_THEATER_BLUE_ORANGE:
-                nextPattern = (s_patternLifetimeMs >= s_patternTotalDurationMs) || theaterChase(
-                    strip0.Color(0xFF, 0x7F, 0x00),
-                    strip0.Color(0x00, 0x00, 0x7F),
-                    3
-                );
-                break;
-            default:
-                nextPattern = true;
+        if (s_patternDurationsMs[s_pattern] && s_patternLifetimeMs >= s_patternDurationsMs[s_pattern]) {
+            nextPattern = true;
+        }
+        else {
+            switch (s_pattern) {
+                case PATTERN_WIPE_RED:
+                    nextPattern = colorWipe(strip0.Color(255, 0, 0));
+                    break;
+                case PATTERN_WIPE_GREEN:
+                    nextPattern = colorWipe(strip0.Color(0, 255, 0));
+                    break;
+                case PATTERN_WIPE_BLUE:
+                    nextPattern = colorWipe(strip0.Color(0, 0, 255));
+                    break;
+                case PATTERN_THEATER_WHITE:
+                    theaterChase(
+                        strip0.Color(0x8F, 0x8F, 0x8F),
+                        0,
+                        3
+                    );
+                    break;
+                case PATTERN_THEATER_RED:
+                    theaterChase(
+                        strip0.Color(0x7F, 0x00, 0x00),
+                        0,
+                        3
+                    );
+                    break;
+                case PATTERN_THEATER_BLUE_ORANGE:
+                    theaterChase(
+                        strip0.Color(0xFF, 0x7F, 0x00),
+                        strip0.Color(0x00, 0x00, 0x7F),
+                        5
+                    );
+                    break;
+                case PATTERN_RAINBOW_WHITE:
+                    rainbow();
+                    break;
+                case PATTERN_RAINBOW_HUE_CYCLE:
+                    //break;
+                default:
+                    nextPattern = true;
+            }
         }
         // "Update"
         if (nextPattern) {
@@ -286,24 +331,7 @@ void loop () {
                 s_pattern = EPattern(0);
             s_patternLifetimeMs = 0;
             s_patternFrame      = uint16_t(-1); // Force redraw on zeroth frame.
-
-            // Change frame duration
-            switch (s_pattern) {
-                case PATTERN_WIPE_RED:
-                    s_patternFrameDurationMs = 40;
-                    break;
-                case PATTERN_WIPE_GREEN:
-                    s_patternFrameDurationMs = 16;
-                    break;
-                case PATTERN_WIPE_BLUE:
-                    s_patternFrameDurationMs = 8;
-                    break;
-                case PATTERN_THEATER_WHITE:
-                case PATTERN_THEATER_RED:
-                case PATTERN_THEATER_BLUE_ORANGE:
-                    s_patternFrameDurationMs = 16;
-                    break;
-            }
+            s_patternFrameDurationMs = s_patternFrameDurationsMs[s_pattern];
         }
 
         // "Present"
@@ -410,24 +438,25 @@ bool colorWipe (
 
 }
 
-void rainbow (uint8_t waitMs) {
-    uint16_t i, j;
+//=============================================================================
+void rainbow (
+    uint16_t firstPixelIndex,
+    uint16_t lastPixelIndex
+) {
 
-    for (j = 0; j < 256; ++j) {
-        for (i = 0; i < MAX_STRIP_PIXELS; ++i) {
-            if (i <= STRIP0_PIXEL_COUNT)
-                strip0.setPixelColor(i, Wheel((i+j) & 255));
-            if (i <= STRIP1_PIXEL_COUNT)
-                strip1.setPixelColor(i, Wheel((i+j) & 255));
-        }
-        strip0.show();
-        strip1.show();
-        if (inputLoop(waitMs))
-            return;
+    // Pattern has 256 frames, and can be repeated.
+    const uint16_t f = s_patternFrame % 256;
+
+    for (uint16_t i = firstPixelIndex; i < lastPixelIndex; ++i) {
+        if (i <= STRIP0_PIXEL_COUNT)
+            strip0.setPixelColor(i, Wheel((i+f) & 0xFF));
+        if (i <= STRIP1_PIXEL_COUNT)
+            strip1.setPixelColor(i, Wheel((i+f) & 0xFF));
     }
+
 }
 
-// Slightly different, this makes the rainbow equally distributed throughout
+// Slightly different, this makes the rainbow lean towards one color at a time
 void rainbowCycle (uint8_t waitMs) {
     uint16_t i, j;
 
@@ -445,7 +474,7 @@ void rainbowCycle (uint8_t waitMs) {
 
 //=============================================================================
 //Theatre-style crawling lights.
-bool theaterChase (
+void theaterChase (
     uint32_t onColor,
     uint32_t offColor,
     uint16_t everyNthIsOn,
@@ -468,26 +497,6 @@ bool theaterChase (
         }
     }
 
-    return false;
-
-    /*
-    for (int q = 0; q < 3; ++q) {
-        for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
-            strip0.setPixelColor(i+q, c);    //turn every third pixel on
-        for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
-            strip1.setPixelColor(i+q, c);    //turn every third pixel on
-        strip0.show();
-        strip1.show();
-
-        if (inputLoop(waitMs))
-            return;
-
-        for (int i = 0; i < STRIP0_PIXEL_COUNT; i += 3)
-            strip0.setPixelColor(i+q, 0);        //turn every third pixel off
-        for (int i = 0; i < STRIP1_PIXEL_COUNT; i += 3)
-            strip1.setPixelColor(i+q, 0);        //turn every third pixel off
-    }
-    */
 }
 
 //Theatre-style crawling lights with rainbow effect
