@@ -20,12 +20,26 @@ uint32_t Wheel(byte WheelPos);
 **********************************************************************************/
 
 //=============================================================================
+enum EPattern {
+    PATTERN_WIPE_RED = 0,
+    PATTERN_WIPE_GREEN,
+    PATTERN_WIPE_BLUE,
+    PATTERN_THEATER_WHITE,
+    PATTERN_THEATER_RED,
+    PATTERN_THEATER_BLUE_ORANGE,
+    PATTERN_RAINBOW_WHITE,
+    PATTERN_RAINBOW_HUE_CYCLE,
+    PATTERNS
+};
+
+//=============================================================================
 class IPattern {
 
 public:
     // == Accessors =================================================
-    virtual uint16_t * FrameDurationMs () = 0;
+    virtual uint16_t   FrameDurationMs () = 0;
     virtual uint16_t * Frame () = 0;
+    virtual EPattern   GetPattern () const = 0;
     virtual bool       IsColorsDirty () const = 0;
     virtual bool       IsDone () const = 0;
 
@@ -39,7 +53,13 @@ public:
 };
 
 //=============================================================================
+template <EPattern T_Pattern, uint16_t T_FrameDurationMs = 16>
 class CPattern : public IPattern {
+
+public:
+    // == Data ======================================================
+    static const EPattern s_pattern         = T_Pattern;
+    static const uint16_t s_frameDurationMs = T_FrameDurationMs;
 
 protected:
     // == Data ======================================================
@@ -47,7 +67,6 @@ protected:
     uint8_t             stripCount;
     uint16_t            longestStripCount;
 
-    uint16_t frameDurationMs;
     uint16_t frame;
     uint16_t timeMs;
     uint16_t timeThisFrameMs;
@@ -56,37 +75,82 @@ protected:
 
 
 public:
-    CPattern (uint16_t frameDuration = 16);
+    CPattern () :
+        strips(0),
+        stripCount(0),
+        longestStripCount(0),
+        frame(0),
+        timeMs(0),
+        timeThisFrameMs(0),
+        colorsDirty(true)
+    {}
 
     // == Accessors =================================================
-    virtual uint16_t * FrameDurationMs () { return &frameDurationMs; }
-    virtual uint16_t * Frame () { return &frame; }
+    virtual uint16_t   FrameDurationMs ()     { return T_FrameDurationMs; }
+    virtual uint16_t * Frame ()               { return &frame; }
+    virtual EPattern   GetPattern () const    { return T_Pattern; }
     virtual bool       IsColorsDirty () const { return colorsDirty; }
 
     // == Methods ===================================================
-    virtual void SetStrips (Adafruit_NeoPixel * strips, uint8_t count);
+    virtual void SetStrips (Adafruit_NeoPixel * strips, uint8_t count) {
+        this->strips = strips;
+        stripCount   = count;
+
+        for (uint8_t i = 0; i < count; ++i) {
+            if (strips[i].numPixels() > longestStripCount)
+                longestStripCount = strips[i].numPixels();
+        }
+    }
 
     virtual void Prepare () { timeMs = frame = 0; colorsDirty = true; }
-    virtual void Update (uint16_t dtMs);
+
+    virtual void Update (uint16_t dtMs) {
+        timeMs += dtMs;
+        timeThisFrameMs += dtMs;
+
+        uint16_t frameLast = frame;
+        while (timeThisFrameMs >= T_FrameDurationMs) {
+        //if (timeThisFrameMs >= T_FrameDurationMs) {
+            timeThisFrameMs -= T_FrameDurationMs;
+            ++frame;
+        }
+
+        if (frame != frameLast)
+            colorsDirty = true;
+    }
+
     virtual void Present () {
         colorsDirty = false;
         for (uint8_t i = 0; i < stripCount; ++i)
-            ;//strips[i].show();
+            strips[i].show();
     }
 
 };
 
 //=============================================================================
-class CPatternRainbow : public CPattern {
+class CPatternRainbow : public CPattern<PATTERN_RAINBOW_WHITE, 20> {
 
 public:
     // == Accessors =================================================
-    virtual bool IsDone () const { return false; } // Pattern repeats for any duration.
+    virtual bool IsDone () const { return timeMs > 15000; }
 
     // == Methods ===================================================
-    CPatternRainbow (uint16_t frameDuration = 20);
+    CPatternRainbow ();
 
-    virtual void Prepare () {}
+    virtual void Update (uint16_t dtMs);
+
+};
+
+//=============================================================================
+class CPatternRainbowHued : public CPattern<PATTERN_RAINBOW_HUE_CYCLE, 20> {
+
+public:
+    // == Accessors =================================================
+    virtual bool IsDone () const { return timeMs > 15000; }
+
+    // == Methods ===================================================
+    CPatternRainbowHued ();
+
     virtual void Update (uint16_t dtMs);
 
 };

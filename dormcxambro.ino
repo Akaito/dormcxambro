@@ -43,18 +43,6 @@ enum EMode {
     MODES
 };
 
-enum EPattern {
-    PATTERN_WIPE_RED = 0,
-    PATTERN_WIPE_GREEN,
-    PATTERN_WIPE_BLUE,
-    PATTERN_THEATER_WHITE,
-    PATTERN_THEATER_RED,
-    PATTERN_THEATER_BLUE_ORANGE,
-    PATTERN_RAINBOW_WHITE,
-    PATTERN_RAINBOW_HUE_CYCLE,
-    PATTERNS
-};
-
 enum EButtonState {
     BUTTON_STATE_UP = 0,
     BUTTON_STATE_DOWN,
@@ -95,6 +83,9 @@ static uint16_t      s_patternFrameDurationsMs[PATTERNS];
 static unsigned long s_patternDurationsMs[PATTERNS];
 
 static IPattern * s_patternNew = 0;
+
+static IPattern *     s_patterns[2];
+static const uint16_t s_patternsCount = sizeof(s_patterns) / sizeof(s_patterns[0]);
 
 PushButton pushButtons[] = {
     { BUTTON0_PIN, BUTTON_STATE_UP, EVENT_BUTTON_0_PRESSED },
@@ -144,8 +135,12 @@ void setup () {
     strip1.show();
     strips[1] = &strip1;
 
-    s_patternNew = new CPatternRainbow();
-    s_patternNew->SetStrips(strips[0], stripCount);
+    s_patterns[0] = new CPatternRainbow();
+    s_patterns[0]->SetStrips(strips[0], stripCount);
+    s_patterns[1] = new CPatternRainbowHued();
+    s_patterns[1]->SetStrips(strips[0], stripCount);
+
+    s_patternNew = s_patterns[0];
     s_patternNew->Prepare();
 
     s_patternFrameDurationsMs[PATTERN_WIPE_RED]            = 40;
@@ -180,11 +175,11 @@ void setup () {
     s_chronoDot.SetDayOfMonth(9);
     s_chronoDot.SetDayOfWeek(ChronoDotSaru::DAY_OF_WEEK_SUNDAY);
     //*/
-    //*
-    //s_chronoDot.SetHour24(23);
+    /*
+    s_chronoDot.SetHour24(21);
     //s_chronoDot.SetHour12(9, true);
-    //s_chronoDot.SetMinute(48);
-    //s_chronoDot.SetSecond(30);
+    s_chronoDot.SetMinute(11);
+    s_chronoDot.SetSecond(30);
     //*/
 
     srandom((unsigned long)(s_chronoDot.Second()) << 8 | (unsigned long)(s_chronoDot.Second()));
@@ -277,6 +272,10 @@ void loop () {
         }
  
         inputLoop(1000);
+
+        // Hacky wait-for-human when pressing the button.
+        if (mode != MODE_WAIT_FOR_ALARM)
+            delay(150);
     }
     else if (mode == MODE_ALARM) {
         //Serial.println("Alarm mode");
@@ -297,9 +296,31 @@ void loop () {
         b = !b;
         //delay(1);
 
-        //if (s_patternNew->IsColorsDirty())
-            //s_patternNew->Present();
+        if (s_patternNew->IsColorsDirty())
+            s_patternNew->Present();
 
+        const bool buttonPressed = digitalRead(BUTTON0_PIN) == LOW;
+        const IPattern * patternBefore = s_patternNew;
+        if (buttonPressed || s_patternNew->IsDone()) {
+            //s_patternNew = s_patterns[0] + ((s_patternNew - s_patterns[0]) + 1) % s_patternsCount;
+            s_patternNew->Prepare();
+            if (buttonPressed && s_patternNew == s_patterns[0])
+                mode = MODE_WAIT_FOR_ALARM;
+            /*
+            ++s_patternNew;
+            if (s_patternNew - s_patterns[0] >= s_patternsCount) {
+                s_patternNew = s_patterns[0];
+                if (buttonPressed)
+                    mode = MODE_WAIT_FOR_ALARM;
+            }
+            s_patternNew->Prepare();
+            */
+        }
+
+        if (buttonPressed) // Wait for the human.
+            delay(150);
+        else
+            delayMicroseconds(500);
 
 #if 0
 
