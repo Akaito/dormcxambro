@@ -4,18 +4,29 @@
 //#include "E:/_work/arduino/led-ceiling/dormcxambro/RTClib/RTClib.h"
 #include "ChronoDotSaru.h"
 
+#define MODE_ARDUINO_MEGA
+//#define MODE_TEENSY_31
+
 // Arduino
-//#define STRIP0_PIN 6
-//#define STRIP1_PIN 7
+#ifdef MODE_ARDUINO_MEGA
+#define DEBUG_LED_PIN 13
+#define STRIP0_PIN 6
+#define STRIP1_PIN 7
+#define BUTTON0_PIN 2
+#define BUTTON1_PIN 3
+#endif
 // Teensy
+#ifdef MODE_TEENSY_31
 #define DEBUG_LED_PIN 13
 #define STRIP0_PIN 11
 #define STRIP1_PIN 12
+#define BUTTON0_PIN 2
+#define BUTTON1_PIN 3
+#endif
+
 #define STRIP0_PIXEL_COUNT 496
 #define STRIP1_PIXEL_COUNT 465
 #define MAX_STRIP_PIXELS (STRIP0_PIXEL_COUNT > STRIP1_PIXEL_COUNT ? STRIP0_PIXEL_COUNT : STRIP1_PIXEL_COUNT)
-#define BUTTON0_PIN 2
-#define BUTTON1_PIN 3
 
 #define WAIT_CHUNK_MS 20
 #define EVENT_CAPACITY 6
