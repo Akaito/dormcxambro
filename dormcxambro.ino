@@ -4,8 +4,8 @@
 //#include "E:/_work/arduino/led-ceiling/dormcxambro/RTClib/RTClib.h"
 #include "ChronoDotSaru.h"
 
-#define MODE_ARDUINO_MEGA
-//#define MODE_TEENSY_31
+//#define MODE_ARDUINO_MEGA
+#define MODE_TEENSY_31
 
 // Arduino
 #ifdef MODE_ARDUINO_MEGA
