@@ -3,7 +3,7 @@ dormcxambro
 
 ## Overview
 
-Fancy bedroom lighting setup.  Perimiter of Adafruit NeoPixel strips controlled by an Arduino Mega ADK.  Time from a ChronoDot.
+Fancy bedroom lighting setup.  Perimiter of Adafruit NeoPixel strips controlled by a microcontroller (Arduino, Teensy...).  Time from a ChronoDot.
 
 ## ChronoDotSaru
 
